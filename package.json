@@ -1,18 +1,23 @@
 {
   "name": "oferta-bot",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
   "scripts": {
     "start": "node src/index.js",
-    "run-once": "node src/run-once.js"
+    "run-once": "node src/run-once.js",
+    "whatsapp:setup": "node src/whatsapp-setup.js",
+    "whatsapp:bridge": "node src/whatsapp-bridge.js"
   },
   "dependencies": {
+    "@whiskeysockets/baileys": "^7.0.0-rc14",
     "axios": "^1.8.4",
     "cheerio": "^1.0.0",
     "dotenv": "^16.4.7",
     "input": "^1.0.1",
     "node-cron": "^4.2.1",
+    "pino": "^10.4.0",
+    "qrcode-terminal": "^0.12.0",
     "telegram": "^2.26.22"
   }
 }
