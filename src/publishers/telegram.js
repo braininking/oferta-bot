@@ -1,5 +1,3 @@
-import axios from "axios";
-
 export function createTelegramPublisher(client, targetChannel) {
   if (!client || !targetChannel) throw new Error("Telegram não configurado.");
 
@@ -33,17 +31,17 @@ export function createTelegramPublisher(client, targetChannel) {
         throw new Error("Oferta sem imagem. Publicação bloqueada para evitar post sem foto.");
       }
 
-      const image = await downloadImage(deal.imageUrl);
-
       try {
         await client.sendFile(targetChannel, {
-          file: image.buffer,
+          file: deal.imageUrl,
           caption: message,
           forceDocument: false
         });
 
         console.log("[TELEGRAM] oferta publicada com imagem.");
       } catch (firstError) {
+        await new Promise(resolve => setTimeout(resolve, 1000));
+
         try {
           await client.sendFile(targetChannel, {
             file: deal.imageUrl,
@@ -56,8 +54,8 @@ export function createTelegramPublisher(client, targetChannel) {
           throw new Error(
             "Falha ao publicar imagem no Telegram: " +
             secondError.message +
-            " | primeira tentativa: " +
-            firstError.message
+            " | segunda tentativa: " +
+            secondError.message
           );
         }
       }
@@ -65,31 +63,3 @@ export function createTelegramPublisher(client, targetChannel) {
   };
 }
 
-async function downloadImage(url) {
-  const response = await axios.get(url, {
-    responseType: "arraybuffer",
-    timeout: 15000,
-    maxContentLength: 10 * 1024 * 1024,
-    headers: {
-      "User-Agent": "OfertaBot/0.3 (+deal-monitor)",
-      "Accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8"
-    }
-  });
-
-  const contentType = String(response.headers["content-type"] || "").toLowerCase();
-
-  if (!contentType.startsWith("image/")) {
-    throw new Error("A URL da imagem retornou conteúdo não-imagem: " + contentType);
-  }
-
-  const buffer = Buffer.from(response.data);
-
-  if (buffer.length < 100) {
-    throw new Error("Imagem vazia ou inválida.");
-  }
-
-  return {
-    buffer,
-    contentType
-  };
-}
