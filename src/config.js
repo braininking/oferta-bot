@@ -20,8 +20,12 @@ export const config = {
   maxDealsPerScan: Number(process.env.MAX_DEALS_PER_SCAN || 3),
 
   amazonTag: process.env.AMAZON_TAG || "ofertaradar03-20",
-  kabumAwinTemplate: process.env.KABUM_AWIN_TEMPLATE || "",
-  magaluAffiliateTemplate: process.env.MAGALU_AFFILIATE_TEMPLATE || "",
+
+  kabumAwinAdvertiserId: process.env.KABUM_AWIN_ADVERTISER_ID || "17729",
+  kabumAwinPublisherId: process.env.KABUM_AWIN_PUBLISHER_ID || "",
+
+  magaluPartnerId: process.env.MAGALU_PARTNER_ID || "magazineoneshotlink",
+
   shopeeAffiliateTemplate: process.env.SHOPEE_AFFILIATE_TEMPLATE || "",
   mercadoLivreAffiliateTemplate: process.env.MERCADOLIVRE_AFFILIATE_TEMPLATE || "",
 
