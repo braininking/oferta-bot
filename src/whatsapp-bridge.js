@@ -1,4 +1,5 @@
 import cron from "node-cron";
+import { NewMessage } from "telegram/events/index.js";
 import { config } from "./config.js";
 import { startTelegram } from "./telegram.js";
 import { connectWhatsApp, sendWhatsAppGroupMessage } from "./whatsapp.js";
@@ -51,7 +52,7 @@ async function main() {
     } catch (error) {
       console.error("[BRIDGE] falha ao enviar:", error.message);
     }
-  }, {});
+  }, new NewMessage({ chats: [config.telegramTargetChannel] }));
 
   // Mantém o processo vivo e permite reinício manual pelo serviço.
   cron.schedule("*/30 * * * *", () => {
