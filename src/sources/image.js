@@ -17,7 +17,23 @@ export async function resolveProductImage({ title, store, productUrl }) {
 
   if (!normalizedTitle) return null;
 
-  const promobitImage = await findPromobitImage(normalizedTitle, productUrl);
+  let promobitImage = await findPromobitImage(
+    normalizedTitle,
+    productUrl,
+    false
+  );
+
+  if (promobitImage) {
+    return promobitImage;
+  }
+
+  // A primeira leitura pode ter sido feita segundos antes da oferta entrar
+  // na página. Força uma nova captura para pegar ofertas recém-publicadas.
+  promobitImage = await findPromobitImage(
+    normalizedTitle,
+    productUrl,
+    true
+  );
 
   if (promobitImage) {
     return promobitImage;
@@ -26,9 +42,9 @@ export async function resolveProductImage({ title, store, productUrl }) {
   return findStoreImage(productUrl);
 }
 
-async function findPromobitImage(normalizedTitle, productUrl) {
+async function findPromobitImage(normalizedTitle, productUrl, forceRefresh) {
   try {
-    const offers = await getPromobitOffers();
+    const offers = await getPromobitOffers(forceRefresh);
 
     const productCode = extractProductCode(productUrl);
 
@@ -71,10 +87,14 @@ async function findPromobitImage(normalizedTitle, productUrl) {
   }
 }
 
-async function getPromobitOffers() {
+async function getPromobitOffers(forceRefresh = false) {
   const now = Date.now();
 
-  if (cache.offers.length && now - cache.loadedAt < 60000) {
+  if (
+    !forceRefresh &&
+    cache.offers.length &&
+    now - cache.loadedAt < 60000
+  ) {
     return cache.offers;
   }
 

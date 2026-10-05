@@ -322,35 +322,69 @@ function isRealImageFile(filePath) {
   return Boolean(filePath);
 }
 
+function withTimeout(promise, milliseconds, label) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) =>
+      setTimeout(
+        () => reject(new Error(label + " excedeu " + milliseconds + "ms")),
+        milliseconds
+      )
+    )
+  ]);
+}
+
 async function resolveImagePath(client, message, text) {
   const productUrl = extractCommerceUrl(text);
   const title = extractOfferTitle(text);
+  const messageId = String(message.id || Date.now());
 
   if (title && productUrl) {
-    const resolvedUrl = await resolveProductImage({
-      title,
-      store: productUrl,
-      productUrl
-    });
-
-    if (resolvedUrl) {
-      const webImage = await downloadWebImage(
-        resolvedUrl,
-        String(message.id || Date.now())
+    try {
+      const resolvedUrl = await withTimeout(
+        resolveProductImage({
+          title,
+          store: productUrl,
+          productUrl
+        }),
+        20000,
+        "Busca da foto do produto"
       );
 
-      if (isRealImageFile(webImage)) {
-        console.log("[IMAGEM] foto do produto encontrada pela loja/Promobit.");
-        return webImage;
+      if (resolvedUrl) {
+        const webImage = await withTimeout(
+          downloadWebImage(resolvedUrl, messageId),
+          12000,
+          "Download da foto do produto"
+        );
+
+        if (isRealImageFile(webImage)) {
+          console.log("[IMAGEM] foto real encontrada pelo Promobit/loja.");
+          return webImage;
+        }
       }
+    } catch (error) {
+      console.warn("[IMAGEM] busca principal falhou:", error.message);
     }
   }
 
-  const telegramImage = await downloadTelegramImage(client, message);
+  // Último recurso: baixa a mídia original da publicação do Telegram,
+  // mas com timeout para nunca travar a fila inteira.
+  if (client && message?.media) {
+    try {
+      const telegramImage = await withTimeout(
+        downloadTelegramImage(client, message),
+        12000,
+        "Download da mídia do Telegram"
+      );
 
-  if (telegramImage && isRealImageFile(telegramImage)) {
-    console.log("[IMAGEM] foto recuperada diretamente do Telegram.");
-    return telegramImage;
+      if (isRealImageFile(telegramImage)) {
+        console.log("[IMAGEM] foto recuperada da mídia do Telegram.");
+        return telegramImage;
+      }
+    } catch (error) {
+      console.warn("[IMAGEM] fallback do Telegram falhou:", error.message);
+    }
   }
 
   return null;
@@ -388,18 +422,47 @@ async function syncOnce(client) {
 
       if (!imagePath) {
         console.warn(
-          "[BRIDGE] oferta sem imagem disponível; não será enviada:",
+          "[BRIDGE] oferta sem imagem disponível; ficará pendente para nova tentativa:",
           id
         );
-        break;
+        continue;
       }
 
-      await sendWhatsAppGroupImage(
-        null,
-        groupName,
-        imagePath,
-        text
-      );
+      let delivered = false;
+      let lastSendError = null;
+
+      for (let attempt = 1; attempt <= 3; attempt += 1) {
+        try {
+          await sendWhatsAppGroupImage(
+            null,
+            groupName,
+            imagePath,
+            text
+          );
+
+          delivered = true;
+          break;
+        } catch (error) {
+          lastSendError = error;
+          console.warn(
+            "[BRIDGE] tentativa",
+            attempt,
+            "de envio com foto falhou:",
+            error.message
+          );
+
+          if (attempt < 3) {
+            await new Promise(resolve => setTimeout(resolve, 1500));
+          }
+        }
+      }
+
+      if (!delivered) {
+        throw new Error(
+          "WhatsApp não confirmou o envio com foto: " +
+          (lastSendError?.message || "erro desconhecido")
+        );
+      }
 
       await cleanupMedia(imagePath);
 
@@ -409,7 +472,7 @@ async function syncOnce(client) {
       console.log(
         "[BRIDGE] oferta enviada ao WhatsApp:",
         id,
-        imagePath ? "(com imagem)" : "(texto)"
+        "(foto + legenda)"
       );
     } catch (error) {
       console.error("[BRIDGE] falha ao enviar", id, ":", error.message);
