@@ -1,6 +1,10 @@
 name: Oferta Bot
 
 on:
+  # Ativa também quando o próprio workflow é atualizado.
+  push:
+    paths:
+      - ".github/workflows/oferta_bot.yml"
   # Varredura automática a cada 10 minutos
   schedule:
     - cron: "*/10 * * * *"
