@@ -1,11 +1,6 @@
 name: Oferta Bot
 
 on:
-  push:
-    branches: [main]
-    paths-ignore:
-      - "data/**"
-      - ".github/workflows/**"
   schedule:
     - cron: "3-59/10 * * * *"
   workflow_dispatch:
