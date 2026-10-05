@@ -54,6 +54,7 @@ export async function scanPublicPage(sourceUrl) {
     const candidates = qualityCandidates.map(offer => ({
       title: offer.offerTitle,
       productId: String(offer.offerId),
+      imageUrl: makeOfferImageUrl(offer.offerPhoto),
       promobitUrl: new URL(
         "/oferta/" + offer.offerSlug + "/",
         sourceUrl
@@ -84,6 +85,7 @@ export async function scanPublicPage(sourceUrl) {
       resolved.push({
         title: deal.title,
         productId: deal.productId,
+        imageUrl: deal.imageUrl || null,
         url: finalUrl,
         source: deal.source,
         storeName: deal.storeName,
@@ -105,6 +107,18 @@ export async function scanPublicPage(sourceUrl) {
   }
 
   return scanLegacyJsonLd($, sourceUrl);
+}
+
+function makeOfferImageUrl(offerPhoto) {
+  const value = String(offerPhoto || "").trim();
+
+  if (!value) return null;
+
+  if (/^https?:\/\//i.test(value)) return value;
+
+  const cleanPath = value.replace(/^\/+/, "");
+
+  return "https://i.promobit.com.br/180/" + cleanPath;
 }
 
 function readNextData($) {

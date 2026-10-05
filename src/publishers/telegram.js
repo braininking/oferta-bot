@@ -27,6 +27,20 @@ export function createTelegramPublisher(client, targetChannel) {
         "⚠️ Oferta válida enquanto durarem os estoques. Preço, estoque e condições podem mudar."
       ].filter(Boolean).join("\n");
 
+      if (deal.imageUrl) {
+        try {
+          await client.sendFile(targetChannel, {
+            file: deal.imageUrl,
+            caption: message,
+            forceDocument: false
+          });
+          console.log("[TELEGRAM] oferta publicada com imagem.");
+          return;
+        } catch (error) {
+          console.warn("[TELEGRAM] imagem falhou; enviando texto:", error.message);
+        }
+      }
+
       await client.sendMessage(targetChannel, { message });
     }
   };

@@ -179,6 +179,57 @@ export async function listWhatsAppGroups() {
   return [...new Set(result?.result?.value || [])];
 }
 
+export async function sendWhatsAppGroupImage(_unused, groupName, filePath) {
+  if (!filePath) {
+    throw new Error("Arquivo de imagem não informado.");
+  }
+
+  const finalGroupName = groupName || GROUP_NAME;
+  await clickGroup(finalGroupName);
+
+  const target = await getWhatsAppTarget();
+
+  await cdp(target.webSocketDebuggerUrl, "Runtime.evaluate", {
+    expression: '(() => { const b=[...document.querySelectorAll("button,[role=button]")].find(e=>e.getAttribute("aria-label")==="Anexar"); if(!b)return false; b.click(); return true; })()',
+    returnByValue: true
+  });
+
+  await new Promise(resolve => setTimeout(resolve, 300));
+
+  await cdp(target.webSocketDebuggerUrl, "DOM.enable");
+
+  const doc = await cdp(target.webSocketDebuggerUrl, "DOM.getDocument", {
+    depth: -1
+  });
+
+  const input = await cdp(target.webSocketDebuggerUrl, "DOM.querySelector", {
+    nodeId: doc.root.nodeId,
+    selector: 'input[type="file"]'
+  });
+
+  if (!input?.nodeId) {
+    throw new Error("Campo de upload de imagem não encontrado.");
+  }
+
+  await cdp(target.webSocketDebuggerUrl, "DOM.setFileInputFiles", {
+    files: [filePath],
+    nodeId: input.nodeId
+  });
+
+  await new Promise(resolve => setTimeout(resolve, 1200));
+
+  const send = await cdp(target.webSocketDebuggerUrl, "Runtime.evaluate", {
+    expression: '(() => { const b=[...document.querySelectorAll("button,[role=button]")].find(e=>e.getAttribute("aria-label")?.startsWith("Enviar ")); if(!b)return false; b.click(); return true; })()',
+    returnByValue: true
+  });
+
+  if (!send?.result?.value) {
+    throw new Error("Botão de envio da imagem não encontrado.");
+  }
+
+  await new Promise(resolve => setTimeout(resolve, 700));
+}
+
 export async function sendWhatsAppGroupMessage(_unused, groupName, message) {
   if (!message?.trim()) {
     throw new Error("Mensagem WhatsApp vazia.");

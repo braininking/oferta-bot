@@ -4,6 +4,8 @@ data/*.html
 data/whatsapp-auth/
 data/whatsapp-qr.png
 data/whatsapp-bridge-state.json
+data/whatsapp-media/
+data/test-product.png
 data/last_run_unix.txt
 data/last_run_iso.txt
 .wwebjs_cache/
