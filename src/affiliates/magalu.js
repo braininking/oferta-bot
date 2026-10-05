@@ -5,7 +5,29 @@ export function isMagalu(url) {
 }
 
 export function convertMagalu(url) {
-  if (!config.magaluAffiliateTemplate) return null;
-  return config.magaluAffiliateTemplate
-    .replaceAll("{url}", encodeURIComponent(url));
+  try {
+    const parsed = new URL(url);
+    const match = parsed.pathname.match(
+      /^\/(.+?)\/p\/([a-z0-9]+)(\/[^?]*)?\/?$/i
+    );
+
+    if (!match) return null;
+
+    const slug = match[1].replace(/^\/+|\/+$/g, "");
+    const code = match[2];
+    const suffix = match[3] || "";
+
+    return (
+      "https://www.magazinevoce.com.br/" +
+      config.magaluPartnerId +
+      "/" +
+      slug +
+      "/p/" +
+      code +
+      suffix +
+      "/"
+    );
+  } catch {
+    return null;
+  }
 }
