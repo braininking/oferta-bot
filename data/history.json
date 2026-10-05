@@ -1,3 +1,25 @@
 {
-  "published": {}
+  "published": {
+    "863abc8b": {
+      "store": "amazon",
+      "productId": "amazon:B0DXR6MKR8",
+      "title": "iPhone 16e Apple 128GB, Câmera 48MP, Tela Super Retina XDR 6,1\", Branco",
+      "url": "https://www.amazon.com.br/dp/B0DXR6MKR8?tag=ofertaradar03-20",
+      "publishedAt": "2026-10-05T18:19:14.838Z"
+    },
+    "16f9a876": {
+      "store": "amazon",
+      "productId": "amazon:B0GTX9DC95",
+      "title": "Razer Teclado Ornata V3 TKL",
+      "url": "https://www.amazon.com.br/dp/B0GTX9DC95?tag=ofertaradar03-20",
+      "publishedAt": "2026-10-05T18:19:14.937Z"
+    },
+    "56c33c91": {
+      "store": "amazon",
+      "productId": "amazon:B0GVP5N2JX",
+      "title": "Hisense Smart TV UHD 4K Hi-QLED 75\" Polegadas 75Q6QV com HDR10+ Dolby Atmos Sports Mode Game Mode Plus e Compatível",
+      "url": "https://www.amazon.com.br/dp/B0GVP5N2JX?tag=ofertaradar03-20",
+      "publishedAt": "2026-10-05T18:19:15.036Z"
+    }
+  }
 }
