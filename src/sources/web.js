@@ -1,5 +1,6 @@
 import axios from "axios";
 import * as cheerio from "cheerio";
+import { qualityRejectReason, qualityScore } from "./quality.js";
 
 const STORE_HOSTS = [
   /(?:^|\.)amazon\.com\.br$/i,
@@ -20,7 +21,7 @@ const TARGET_STORE_DOMAINS = [
 ];
 
 const REQUEST_HEADERS = {
-  "User-Agent": "OfertaBot/0.2 (+deal-monitor)",
+  "User-Agent": "OfertaBot/0.3 (+deal-monitor)",
   "Accept": "text/html,application/xhtml+xml,application/json"
 };
 
@@ -36,25 +37,41 @@ export async function scanPublicPage(sourceUrl) {
   const offers = nextData?.props?.pageProps?.serverOffers?.offers || [];
 
   if (offers.length) {
-    const candidates = offers
+    const rawCandidates = offers
       .filter(isUsefulOffer)
-      .filter(offer => isTargetStoreDomain(offer.storeDomain))
-      .slice(0, 30)
-      .map(offer => ({
-        title: offer.offerTitle,
-        productId: String(offer.offerId),
-        promobitUrl: new URL(
-          "/oferta/" + offer.offerSlug + "/",
-          sourceUrl
-        ).toString(),
-        storeName: offer.storeName || "",
-        storeDomain: offer.storeDomain || "",
-        price: offer.offerPrice ?? null,
-        oldPrice: offer.offerOldPrice ?? null,
-        discount: offer.offerDiscontPercentage ?? 0,
-        publishedAt: offer.offerPublished || null,
-        source: sourceUrl
-      }));
+      .filter(offer => isTargetStoreDomain(offer.storeDomain));
+
+    const qualityCandidates = rawCandidates
+      .map(offer => ({ offer, rejectReason: qualityRejectReason(offer) }))
+      .filter(item => !item.rejectReason)
+      .map(item => item.offer)
+      .sort((a, b) => qualityScore(b) - qualityScore(a))
+      .slice(0, 30);
+
+    const rejected = rawCandidates.length - qualityCandidates.length;
+    console.log("[QUALIDADE]", sourceUrl, "=>", rawCandidates.length, "válidos de loja;", rejected, "rejeitados por qualidade");
+
+    const candidates = qualityCandidates.map(offer => ({
+      title: offer.offerTitle,
+      productId: String(offer.offerId),
+      promobitUrl: new URL(
+        "/oferta/" + offer.offerSlug + "/",
+        sourceUrl
+      ).toString(),
+      storeName: offer.storeName || "",
+      storeDomain: offer.storeDomain || "",
+      price: offer.offerPrice ?? null,
+      oldPrice: offer.offerOldPrice ?? null,
+      discount: offer.offerDiscontPercentage ?? 0,
+      publishedAt: offer.offerPublished || null,
+      likes: offer.offerLikes ?? 0,
+      engagementScore: offer.offerEngagementScore ?? 0,
+      clicks: offer.offerClicks ?? 0,
+      comments: offer.offerComments ?? 0,
+      highlight: Boolean(offer.offerIsHighlight),
+      category: offer.categoryName || "",
+      source: sourceUrl
+    }));
 
     const resolved = [];
     for (const deal of dedupe(candidates)) {
@@ -74,7 +91,13 @@ export async function scanPublicPage(sourceUrl) {
         price: deal.price,
         oldPrice: deal.oldPrice,
         discount: deal.discount,
-        publishedAt: deal.publishedAt
+        publishedAt: deal.publishedAt,
+        likes: deal.likes,
+        engagementScore: deal.engagementScore,
+        clicks: deal.clicks,
+        comments: deal.comments,
+        highlight: deal.highlight,
+        category: deal.category
       });
     }
 
