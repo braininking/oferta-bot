@@ -228,6 +228,7 @@ async function scanLegacyJsonLd($, sourceUrl) {
       deals.push({
         title: String(item.name).replace(/\s+/g, " ").trim(),
         productId: String(item.sku),
+        imageUrl: Array.isArray(item.image) ? item.image[0] : (item.image || null),
         promobitUrl: new URL(offer.url || "/", sourceUrl).toString(),
         storeName: offer.seller?.name || "",
         price: offer.price ?? offer.lowPrice ?? null,

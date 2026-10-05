@@ -1,13 +1,10 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { config } from "./config.js";
+import { resolveProductImage } from "./sources/image.js";
 import { sendWhatsAppGroupImage } from "./whatsapp.js";
 import { startTelegram } from "./telegram.js";
-import {
-  connectWhatsApp,
-  sendWhatsAppGroupMessage,
-  getWhatsAppGroupName
-} from "./whatsapp.js";
+import { connectWhatsApp, getWhatsAppGroupName } from "./whatsapp.js";
 
 const ROOT = path.resolve(process.cwd());
 const STATE_FILE = path.join(ROOT, "data", "whatsapp-bridge-state.json");
@@ -104,22 +101,76 @@ function rememberMessage(id, key) {
 async function downloadTelegramImage(client, message) {
   if (!message?.media) return null;
 
-  const mediaDir = path.join(ROOT, "data", "whatsapp-media");
-  await fs.mkdir(mediaDir, { recursive: true });
-
-  const id = String(message.id || Date.now());
-  const filePath = path.join(mediaDir, "telegram-" + id + ".jpg");
-
   try {
     const buffer = await client.downloadMedia(message, {});
-    if (!buffer) return null;
 
-    await fs.writeFile(filePath, buffer);
-    return filePath;
+    if (!buffer || !buffer.length) {
+      return null;
+    }
+
+    const extension = detectImageExtension(buffer);
+    if (!extension) {
+      console.warn("[BRIDGE] mídia do Telegram não é uma imagem reconhecida.");
+      return null;
+    }
+
+    return writeImageBuffer(buffer, "telegram-" + String(message.id || Date.now()), extension);
   } catch (error) {
     console.error("[BRIDGE] não foi possível baixar a imagem do Telegram:", error.message);
     return null;
   }
+}
+
+function detectImageExtension(buffer) {
+  if (!buffer || buffer.length < 4) return null;
+
+  if (
+    buffer[0] === 0x89 &&
+    buffer[1] === 0x50 &&
+    buffer[2] === 0x4e &&
+    buffer[3] === 0x47
+  ) {
+    return ".png";
+  }
+
+  if (
+    buffer[0] === 0xff &&
+    buffer[1] === 0xd8 &&
+    buffer[2] === 0xff
+  ) {
+    return ".jpg";
+  }
+
+  if (
+    buffer[0] === 0x52 &&
+    buffer[1] === 0x49 &&
+    buffer[2] === 0x46 &&
+    buffer[3] === 0x46 &&
+    buffer.toString("ascii", 8, 12) === "WEBP"
+  ) {
+    return ".webp";
+  }
+
+  if (
+    buffer[0] === 0x47 &&
+    buffer[1] === 0x49 &&
+    buffer[2] === 0x46
+  ) {
+    return ".gif";
+  }
+
+  return null;
+}
+
+async function writeImageBuffer(buffer, baseName, extension) {
+  const mediaDir = path.join(ROOT, "data", "whatsapp-media");
+  await fs.mkdir(mediaDir, { recursive: true });
+
+  const filePath = path.join(mediaDir, baseName + extension);
+
+  await fs.writeFile(filePath, buffer);
+
+  return filePath;
 }
 
 async function cleanupMedia(filePath) {
@@ -128,6 +179,181 @@ async function cleanupMedia(filePath) {
   try {
     await fs.unlink(filePath);
   } catch {}
+}
+
+function extractCommerceUrl(text) {
+  const urls = String(text || "").match(/https?:\/\/[^\s]+/g) || [];
+
+  return urls
+    .map(url => url.replace(/[)>.,]+$/, ""))
+    .find(url => !/t\.me\//i.test(url)) || null;
+}
+
+function decodeHtml(value) {
+  return String(value || "")
+    .replace(/&amp;/gi, "&")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#x2f;/gi, "/")
+    .replace(/&#47;/g, "/")
+    .trim();
+}
+
+function extractMetaImage(html) {
+  const patterns = [
+    /<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["'][^>]*>/i,
+    /<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image["'][^>]*>/i,
+    /<meta[^>]+name=["']twitter:image(?::src)?["'][^>]+content=["']([^"']+)["'][^>]*>/i,
+    /<meta[^>]+content=["']([^"']+)["'][^>]+name=["']twitter:image(?::src)?["'][^>]*>/i
+  ];
+
+  for (const pattern of patterns) {
+    const match = html.match(pattern);
+    if (match?.[1]) {
+      return decodeHtml(match[1]);
+    }
+  }
+
+  return null;
+}
+
+function findJsonLdImage(html) {
+  const scripts = html.match(/<script[^>]+type=["']application\/ld\+json["'][^>]*>[\s\S]*?<\/script>/gi) || [];
+
+  for (const script of scripts) {
+    const body = script
+      .replace(/^.*?>/s, "")
+      .replace(/<\/script>\s*$/i, "")
+      .trim();
+
+    try {
+      const json = JSON.parse(body);
+      const image = findImageInObject(json);
+
+      if (image) {
+        return image;
+      }
+    } catch {}
+  }
+
+  return null;
+}
+
+function findImageInObject(value) {
+  if (!value || typeof value !== "object") return null;
+
+  if (typeof value.image === "string" && /^https?:\/\//i.test(value.image)) {
+    return value.image;
+  }
+
+  if (Array.isArray(value.image)) {
+    const image = value.image.find(item => typeof item === "string" && /^https?:\/\//i.test(item));
+    if (image) return image;
+  }
+
+  for (const child of Object.values(value)) {
+    const found = findImageInObject(child);
+    if (found) return found;
+  }
+
+  return null;
+}
+
+async function findProductPageImage(productUrl) {
+  try {
+    const response = await fetch(productUrl, {
+      redirect: "follow",
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/154 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml"
+      }
+    });
+
+    if (!response.ok) {
+      return null;
+    }
+
+    const html = (await response.text()).slice(0, 4 * 1024 * 1024);
+
+    return extractMetaImage(html) || findJsonLdImage(html);
+  } catch (error) {
+    console.error("[BRIDGE] não foi possível consultar a página do produto:", error.message);
+    return null;
+  }
+}
+
+async function downloadWebImage(url, messageId) {
+  try {
+    const response = await fetch(url, {
+      redirect: "follow",
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/154 Safari/537.36",
+        "Accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8"
+      }
+    });
+
+    if (!response.ok) return null;
+
+    const contentType = String(response.headers.get("content-type") || "").toLowerCase();
+    if (!contentType.startsWith("image/")) return null;
+
+    const buffer = Buffer.from(await response.arrayBuffer());
+    const extension = detectImageExtension(buffer);
+
+    if (!extension || buffer.length < 100) {
+      return null;
+    }
+
+    return writeImageBuffer(buffer, "web-" + messageId, extension);
+  } catch (error) {
+    console.error("[BRIDGE] falha ao baixar imagem da loja:", error.message);
+    return null;
+  }
+}
+
+function extractOfferTitle(text) {
+  const match = String(text || "").match(
+    /OFERTA ENCONTRADA\s*\n+([\s\S]*?)\n+\s*(?:De:|R\$|🏷️)/i
+  );
+
+  return match?.[1]?.replace(/\s+/g, " ").trim() || "";
+}
+
+function isRealImageFile(filePath) {
+  return Boolean(filePath);
+}
+
+async function resolveImagePath(client, message, text) {
+  const productUrl = extractCommerceUrl(text);
+  const title = extractOfferTitle(text);
+
+  if (title && productUrl) {
+    const resolvedUrl = await resolveProductImage({
+      title,
+      store: productUrl,
+      productUrl
+    });
+
+    if (resolvedUrl) {
+      const webImage = await downloadWebImage(
+        resolvedUrl,
+        String(message.id || Date.now())
+      );
+
+      if (isRealImageFile(webImage)) {
+        console.log("[IMAGEM] foto do produto encontrada pela loja/Promobit.");
+        return webImage;
+      }
+    }
+  }
+
+  const telegramImage = await downloadTelegramImage(client, message);
+
+  if (telegramImage && isRealImageFile(telegramImage)) {
+    console.log("[IMAGEM] foto recuperada diretamente do Telegram.");
+    return telegramImage;
+  }
+
+  return null;
 }
 
 async function syncOnce(client) {
@@ -158,13 +384,22 @@ async function syncOnce(client) {
     }
 
     try {
-      const imagePath = await downloadTelegramImage(client, message);
+      const imagePath = await resolveImagePath(client, message, text);
 
-      if (imagePath) {
-        await sendWhatsAppGroupImage(null, groupName, imagePath);
+      if (!imagePath) {
+        console.warn(
+          "[BRIDGE] oferta sem imagem disponível; não será enviada:",
+          id
+        );
+        break;
       }
 
-      await sendWhatsAppGroupMessage(null, groupName, text);
+      await sendWhatsAppGroupImage(
+        null,
+        groupName,
+        imagePath,
+        text
+      );
 
       await cleanupMedia(imagePath);
 
@@ -178,7 +413,7 @@ async function syncOnce(client) {
       );
     } catch (error) {
       console.error("[BRIDGE] falha ao enviar", id, ":", error.message);
-      break;
+      continue;
     }
   }
 }

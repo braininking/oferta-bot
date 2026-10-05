@@ -38,6 +38,46 @@ async function getWhatsAppTarget() {
   return target;
 }
 
+async function openCdpSession(wsUrl) {
+  const ws = new WebSocket(wsUrl);
+  let nextId = 1;
+
+  const command = (method, params = {}) => new Promise((resolve, reject) => {
+    const id = nextId++;
+    const timer = setTimeout(() => {
+      reject(new Error("CDP timeout: " + method));
+    }, 10000);
+
+    const onMessage = event => {
+      const message = JSON.parse(event.data);
+
+      if (message.id !== id) return;
+
+      clearTimeout(timer);
+      ws.removeEventListener("message", onMessage);
+
+      if (message.error) {
+        reject(new Error(JSON.stringify(message.error)));
+      } else {
+        resolve(message.result);
+      }
+    };
+
+    ws.addEventListener("message", onMessage);
+    ws.send(JSON.stringify({ id, method, params }));
+  });
+
+  await new Promise((resolve, reject) => {
+    ws.addEventListener("open", resolve, { once: true });
+    ws.addEventListener("error", reject, { once: true });
+  });
+
+  return {
+    command,
+    close: () => ws.close()
+  };
+}
+
 async function cdp(wsUrl, method, params = {}) {
   const ws = new WebSocket(wsUrl);
   let nextId = 1;
@@ -179,7 +219,7 @@ export async function listWhatsAppGroups() {
   return [...new Set(result?.result?.value || [])];
 }
 
-export async function sendWhatsAppGroupImage(_unused, groupName, filePath) {
+export async function sendWhatsAppGroupImage(_unused, groupName, filePath, caption = "") {
   if (!filePath) {
     throw new Error("Arquivo de imagem não informado.");
   }
@@ -188,46 +228,141 @@ export async function sendWhatsAppGroupImage(_unused, groupName, filePath) {
   await clickGroup(finalGroupName);
 
   const target = await getWhatsAppTarget();
+  const session = await openCdpSession(target.webSocketDebuggerUrl);
 
-  await cdp(target.webSocketDebuggerUrl, "Runtime.evaluate", {
-    expression: '(() => { const b=[...document.querySelectorAll("button,[role=button]")].find(e=>e.getAttribute("aria-label")==="Anexar"); if(!b)return false; b.click(); return true; })()',
-    returnByValue: true
-  });
+  try {
+    await session.command("DOM.enable");
 
-  await new Promise(resolve => setTimeout(resolve, 300));
+    const attached = await session.command("Runtime.evaluate", {
+      expression: '(() => { const b=[...document.querySelectorAll("button,[role=button]")].find(e=>e.getAttribute("aria-label")==="Anexar"); if(!b)return false; b.click(); return true; })()',
+      returnByValue: true
+    });
 
-  await cdp(target.webSocketDebuggerUrl, "DOM.enable");
+    if (!attached?.result?.value) {
+      throw new Error("Botão Anexar do WhatsApp não encontrado.");
+    }
 
-  const doc = await cdp(target.webSocketDebuggerUrl, "DOM.getDocument", {
-    depth: -1
-  });
+    await new Promise(resolve => setTimeout(resolve, 500));
 
-  const input = await cdp(target.webSocketDebuggerUrl, "DOM.querySelector", {
-    nodeId: doc.root.nodeId,
-    selector: 'input[type="file"]'
-  });
+    const doc = await session.command("DOM.getDocument", {
+      depth: -1
+    });
 
-  if (!input?.nodeId) {
-    throw new Error("Campo de upload de imagem não encontrado.");
+    const input = await session.command("DOM.querySelector", {
+      nodeId: doc.root.nodeId,
+      selector: 'input[type="file"][accept*="image"], input[type="file"]'
+    });
+
+    if (!input?.nodeId) {
+      throw new Error("Campo de upload de imagem não encontrado.");
+    }
+
+    await session.command("DOM.setFileInputFiles", {
+      files: [filePath],
+      nodeId: input.nodeId
+    });
+
+    const deadline = Date.now() + 15000;
+    let ready = false;
+
+    while (Date.now() < deadline) {
+      const state = await session.command("Runtime.evaluate", {
+        expression: '(() => { const canvas=document.querySelector("[data-testid=media-editor-canvas]"); const img=canvas?.querySelector("img"); const send=[...document.querySelectorAll("[role=button]")].some(e=>(e.getAttribute("aria-label")||"").startsWith("Enviar ")) || !!document.querySelector("[data-testid=wds-ic-send-filled]"); return { image:!!img, send }; })()',
+        returnByValue: true
+      });
+
+      const value = state?.result?.value || {};
+
+      if (value.image && value.send) {
+        ready = true;
+        break;
+      }
+
+      await new Promise(resolve => setTimeout(resolve, 300));
+    }
+
+    if (!ready) {
+      throw new Error("O WhatsApp não concluiu o carregamento da imagem.");
+    }
+
+    if (caption.trim()) {
+      const captionSet = await session.command("Runtime.evaluate", {
+        expression: `(() => {
+          const box =
+            document.querySelector('[data-testid="conversation-compose-box-input"]') ||
+            [...document.querySelectorAll('[contenteditable="true"]')].find(el => {
+              const rect = el.getBoundingClientRect();
+              return rect.width > 0 && rect.height > 0;
+            });
+
+          if (!box) return false;
+
+          box.focus();
+
+          const selection = window.getSelection();
+          const range = document.createRange();
+          range.selectNodeContents(box);
+          selection.removeAllRanges();
+          selection.addRange(range);
+
+          return true;
+        })()`,
+        returnByValue: true
+      });
+
+      if (!captionSet?.result?.value) {
+        throw new Error("Campo de legenda da imagem não encontrado.");
+      }
+
+      await session.command("Input.dispatchKeyEvent", {
+        type: "keyDown",
+        key: "Backspace",
+        code: "Backspace",
+        windowsVirtualKeyCode: 8,
+        nativeVirtualKeyCode: 8
+      });
+
+      await session.command("Input.dispatchKeyEvent", {
+        type: "keyUp",
+        key: "Backspace",
+        code: "Backspace",
+        windowsVirtualKeyCode: 8,
+        nativeVirtualKeyCode: 8
+      });
+
+      await session.command("Input.insertText", {
+        text: caption.trim()
+      });
+    }
+
+    const send = await session.command("Runtime.evaluate", {
+      expression: '(() => { const b=[...document.querySelectorAll("[role=button]")].find(e=>e.getAttribute("aria-label")?.startsWith("Enviar ")) || document.querySelector("[data-testid=wds-ic-send-filled]")?.closest("[role=button]"); if(!b)return false; b.click(); return true; })()',
+      returnByValue: true
+    });
+
+    if (!send?.result?.value) {
+      throw new Error("Botão de envio da imagem não encontrado.");
+    }
+
+    const closedDeadline = Date.now() + 10000;
+    while (Date.now() < closedDeadline) {
+      const closed = await session.command("Runtime.evaluate", {
+        expression: '(() => !document.querySelector("[data-testid=media-editor-canvas]"))()',
+        returnByValue: true
+      });
+
+      if (closed?.result?.value === true) {
+        console.log("[WHATSAPP] imagem + legenda enviadas em uma única mensagem.");
+        return;
+      }
+
+      await new Promise(resolve => setTimeout(resolve, 300));
+    }
+
+    throw new Error("O WhatsApp não confirmou o fechamento do editor de mídia.");
+  } finally {
+    session.close();
   }
-
-  await cdp(target.webSocketDebuggerUrl, "DOM.setFileInputFiles", {
-    files: [filePath],
-    nodeId: input.nodeId
-  });
-
-  await new Promise(resolve => setTimeout(resolve, 1200));
-
-  const send = await cdp(target.webSocketDebuggerUrl, "Runtime.evaluate", {
-    expression: '(() => { const b=[...document.querySelectorAll("button,[role=button]")].find(e=>e.getAttribute("aria-label")?.startsWith("Enviar ")); if(!b)return false; b.click(); return true; })()',
-    returnByValue: true
-  });
-
-  if (!send?.result?.value) {
-    throw new Error("Botão de envio da imagem não encontrado.");
-  }
-
-  await new Promise(resolve => setTimeout(resolve, 700));
 }
 
 export async function sendWhatsAppGroupMessage(_unused, groupName, message) {
