@@ -3,3 +3,4 @@ node_modules/
 npm-debug.log*
 data/*.html
 data/whatsapp-auth/
+data/whatsapp-qr.png

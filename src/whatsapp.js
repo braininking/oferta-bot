@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import qrcode from "qrcode-terminal";
+import QRCode from "qrcode";
 import makeWASocket, {
   DisconnectReason,
   useMultiFileAuthState
@@ -27,11 +27,16 @@ export async function connectWhatsApp({ onQr = null } = {}) {
       reject(new Error("Tempo limite ao conectar ao WhatsApp."));
     }, 120000);
 
-    sock.ev.on("connection.update", update => {
+    sock.ev.on("connection.update", async update => {
       const { connection, lastDisconnect, qr } = update;
 
       if (qr) {
-        qrcode.generate(qr, { small: true });
+        const qrPath = path.join(ROOT, "data", "whatsapp-qr.png");
+        await QRCode.toFile(qrPath, qr, {
+          width: 520,
+          margin: 2
+        });
+        console.log("[WHATSAPP] QR Code salvo em:", qrPath);
         if (onQr) onQr(qr);
       }
 
