@@ -5,7 +5,19 @@ export function isKabum(url) {
 }
 
 export function convertKabum(url) {
-  if (!config.kabumAwinTemplate) return null;
-  return config.kabumAwinTemplate
-    .replaceAll("{url}", encodeURIComponent(url));
+  if (!config.kabumAwinPublisherId) return null;
+
+  try {
+    const parsed = new URL(url);
+    parsed.hash = "";
+
+    return (
+      "https://www.awin1.com/cread.php?" +
+      "awinmid=" + encodeURIComponent(config.kabumAwinAdvertiserId) +
+      "&awinaffid=" + encodeURIComponent(config.kabumAwinPublisherId) +
+      "&ued=" + encodeURIComponent(parsed.toString())
+    );
+  } catch {
+    return null;
+  }
 }
