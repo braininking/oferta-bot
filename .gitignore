@@ -1,6 +1,12 @@
-node_modules/
 .env
-npm-debug.log*
+.wwebjs_cache/
 data/*.html
 data/whatsapp-auth/
 data/whatsapp-qr.png
+data/whatsapp-bridge-state.json
+data/last_run_unix.txt
+data/last_run_iso.txt
+.wwebjs_cache/
+data/whatsapp-webjs-auth/
+node_modules/
+npm-debug.log*

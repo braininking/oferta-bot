@@ -28,24 +28,99 @@ async function saveHistory() {
 }
 
 export function makeFingerprint({ store, productId, title, url }) {
-  const normalizedStore = String(store || "").toLowerCase().trim();
-  const normalizedProductId = String(productId || "").trim();
-  const normalizedTitle = String(title || "").toLowerCase().replace(/\s+/g, " ").trim();
-  const normalizedUrl = normalizeUrl(url);
+  return hashKey([
+    normalizeStore(store),
+    normalizeIdentity(productId),
+    normalizeTitle(title),
+    normalizeUrl(url)
+  ]);
+}
 
-  // Quando temos um identificador estável do produto, ele é a identidade principal.
-  // Isso evita publicar o mesmo produto novamente só porque o Promobit criou outra oferta.
-  const base = normalizedProductId
-    ? [normalizedStore, normalizedProductId].join("|")
-    : [normalizedStore, normalizedTitle, normalizedUrl].join("|");
+export function makeProductFingerprint({ store, productId, title }) {
+  return hashKey([
+    normalizeStore(store),
+    normalizeIdentity(productId || normalizeTitle(title))
+  ]);
+}
 
-  let hash = 2166136261;
-  for (let i = 0; i < base.length; i++) {
-    hash ^= base.charCodeAt(i);
-    hash = Math.imul(hash, 16777619);
+export function makeTitleFingerprint({ store, title }) {
+  return hashKey([
+    normalizeStore(store),
+    normalizeTitle(title)
+  ]);
+}
+
+export function hasPublishedProduct({ store, productId, title }) {
+  const normalizedStore = normalizeStore(store);
+  const normalizedProductId = normalizeIdentity(productId);
+  const normalizedTitle = normalizeTitle(title);
+
+  return Object.values(state.published).some(entry => {
+    if (normalizeStore(entry?.store) !== normalizedStore) return false;
+
+    if (
+      normalizedProductId &&
+      normalizeIdentity(entry?.productId) === normalizedProductId
+    ) {
+      return true;
+    }
+
+    const entryTitle = normalizeTitle(entry?.title);
+
+    if (
+      normalizedTitle &&
+      entryTitle === normalizedTitle
+    ) {
+      return true;
+    }
+
+    if (
+      normalizedTitle &&
+      areTitlesLikelySame(normalizedTitle, entryTitle)
+    ) {
+      return true;
+    }
+
+    return false;
+  });
+}
+
+function areTitlesLikelySame(a, b) {
+  const left = new Set(String(a || "").split(" ").filter(token => token.length >= 2));
+  const right = new Set(String(b || "").split(" ").filter(token => token.length >= 2));
+
+  if (!left.size || !right.size) return false;
+
+  let common = 0;
+
+  for (const token of left) {
+    if (right.has(token)) common += 1;
   }
 
-  return (hash >>> 0).toString(16);
+  const union = new Set([...left, ...right]).size;
+  const similarity = union ? common / union : 0;
+
+  return Math.min(left.size, right.size) >= 5 && similarity >= 0.72;
+}
+
+function normalizeStore(value) {
+  return String(value || "").toLowerCase().trim();
+}
+
+function normalizeIdentity(value) {
+  return String(value || "").toLowerCase().replace(/\s+/g, " ").trim();
+}
+
+function normalizeTitle(value) {
+  return String(value || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\b(amazon|kabum|magalu|shopee|mercado livre)\b/g, " ")
+    .replace(/\b(128gb|256gb|512gb|1tb|2tb|4tb)\b/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function normalizeUrl(url) {
@@ -57,27 +132,54 @@ function normalizeUrl(url) {
 
     const removableParams = [
       "utm_source", "utm_medium", "utm_campaign", "utm_term",
-      "utm_content", "gclid", "fbclid", "ref", "ref_", "tag",
-      "qid", "spm", "psc", "sr", "dib", "dib_tag"
+      "utm_content", "gclid", "fbclid", "ref", "ref_",
+      "tag", "qid", "spm", "psc", "sr", "dib", "dib_tag"
     ];
 
-    for (const param of removableParams) parsed.searchParams.delete(param);
-    parsed.searchParams.sort();
+    for (const param of removableParams) {
+      parsed.searchParams.delete(param);
+    }
 
+    parsed.searchParams.sort();
     return parsed.toString().replace(/\/$/, "");
   } catch {
     return normalizedUrl.replace(/\/$/, "");
   }
 }
 
+function hashKey(parts) {
+  const base = parts.join("|");
+
+  let hash = 2166136261;
+  for (let i = 0; i < base.length; i += 1) {
+    hash ^= base.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+
+  return (hash >>> 0).toString(16);
+}
+
 export function hasPublished(fingerprint) {
   return Boolean(state.published[fingerprint]);
 }
 
-export async function markPublished(fingerprint, metadata = {}) {
-  state.published[fingerprint] = {
-    ...metadata,
-    publishedAt: new Date().toISOString()
-  };
+export function hasAnyPublished(fingerprints = []) {
+  return fingerprints.some(hasPublished);
+}
+
+export async function markPublished(fingerprints, metadata = {}) {
+  const list = Array.isArray(fingerprints) ? fingerprints : [fingerprints];
+
+  for (const fingerprint of list.filter(Boolean)) {
+    state.published[fingerprint] = {
+      ...metadata,
+      publishedAt: new Date().toISOString()
+    };
+  }
+
   await saveHistory();
+}
+
+export async function getHistorySnapshot() {
+  return JSON.parse(JSON.stringify(state));
 }

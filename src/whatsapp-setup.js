@@ -1,11 +1,37 @@
+import readline from "node:readline";
 import { connectWhatsApp, listWhatsAppGroups } from "./whatsapp.js";
+
+function ask(question) {
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout
+  });
+
+  return new Promise(resolve => {
+    rl.question(question, answer => {
+      rl.close();
+      resolve(answer.trim());
+    });
+  });
+}
 
 async function main() {
   console.log("\n=== CONFIGURAÇÃO DO WHATSAPP ===");
-  console.log("A primeira execução exibirá um QR Code no terminal.");
-  console.log("No telefone: WhatsApp > Configurações > Aparelhos conectados > Conectar aparelho.");
+  console.log("Vamos usar código de pareamento em vez de QR Code.");
+  console.log("Informe o número do WhatsApp com DDI, somente números.");
+  console.log("Exemplo Brasil: 5511999999999");
+  console.log("");
 
-  const sock = await connectWhatsApp();
+  const phoneNumber = process.env.WHATSAPP_PAIRING_NUMBER ||
+    await ask("Número do WhatsApp: ");
+
+  if (!phoneNumber) {
+    throw new Error("Número do WhatsApp não informado.");
+  }
+
+  const sock = await connectWhatsApp({
+    pairingPhoneNumber: phoneNumber
+  });
 
   console.log("\n[WHATSAPP] grupos encontrados:");
   const groups = await listWhatsAppGroups(sock);

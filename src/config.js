@@ -29,5 +29,7 @@ export const config = {
   shopeeAffiliateTemplate: process.env.SHOPEE_AFFILIATE_TEMPLATE || "",
   mercadoLivreAffiliateTemplate: process.env.MERCADOLIVRE_AFFILIATE_TEMPLATE || "",
 
-  whatsappEnabled: process.env.WHATSAPP_ENABLED === "true"
+  whatsappEnabled: process.env.WHATSAPP_ENABLED === "true",
+  whatsappCdpPort: Number(process.env.WHATSAPP_CDP_PORT || 9222),
+  whatsappGroupName: process.env.WHATSAPP_GROUP_NAME || "RADAR DE OFERTAS"
 };

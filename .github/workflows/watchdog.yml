@@ -1,0 +1,57 @@
+name: Oferta Bot Watchdog
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  verificar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+
+    steps:
+      - name: Verificar última execução
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -e
+
+          git init -q
+          git remote add origin "https://github.com/${GITHUB_REPOSITORY}.git"
+          git fetch -q --no-tags --depth=1 origin bot-state:refs/remotes/origin/bot-state || true
+
+          last_run=""
+
+          if git show-ref --verify --quiet refs/remotes/origin/bot-state; then
+            last_run="$(git show origin/bot-state:last_run_unix.txt 2>/dev/null || true)"
+          fi
+
+          now="$(date +%s)"
+          stale="1"
+
+          if [[ "$last_run" =~ ^[0-9]+$ ]]; then
+            age=$((now - last_run))
+
+            if [ "$age" -lt 900 ]; then
+              stale="0"
+              echo "Bot saudável. Última execução bem-sucedida há ${age}s."
+            else
+              echo "Bot atrasado. Última execução bem-sucedida há ${age}s."
+            fi
+          else
+            echo "Não existe registro de execução bem-sucedida."
+          fi
+
+          if [ "$stale" = "1" ]; then
+            echo "Disparando nova execução do Oferta Bot..."
+
+            curl -fsSL               -X POST               -H "Accept: application/vnd.github+json"               -H "Authorization: Bearer $GH_TOKEN"               -H "X-GitHub-Api-Version: 2022-11-28"               "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/workflows/oferta_bot.yml/dispatches"               -d '{"ref":"main"}'
+
+            echo "Execução solicitada."
+          fi

@@ -1,13 +1,11 @@
 name: Oferta Bot
 
 on:
-  # Ativa também quando o próprio workflow é atualizado.
   push:
     paths:
       - ".github/workflows/oferta_bot.yml"
-  # Varredura automática a cada 10 minutos
   schedule:
-    - cron: "*/10 * * * *"
+    - cron: "3-59/10 * * * *"
   workflow_dispatch:
 
 permissions:
@@ -21,6 +19,7 @@ jobs:
   garimpar-e-publicar:
     runs-on: ubuntu-latest
     timeout-minutes: 5
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -33,6 +32,19 @@ jobs:
 
       - name: Instalar dependências
         run: npm ci --omit=dev
+
+      - name: Recuperar estado persistente
+        shell: bash
+        run: |
+          git fetch origin bot-state:refs/remotes/origin/bot-state || true
+
+          if git show-ref --verify --quiet refs/remotes/origin/bot-state; then
+            git show origin/bot-state:data/history.json > data/history.json || true
+          fi
+
+          if [ ! -s data/history.json ]; then
+            printf '%s\n' '{"published":{}}' > data/history.json
+          fi
 
       - name: Executar uma varredura
         env:
@@ -53,27 +65,44 @@ jobs:
           NODE_ENV: production
         run: npm run run-once
 
-      - name: Manter atividade mensal do repositório
+      - name: Atualizar atividade mensal
         shell: bash
         run: |
           month="$(date -u +%Y-%m)"
           current=""
+
           if [ -f data/heartbeat.txt ]; then
             current="$(cat data/heartbeat.txt)"
           fi
+
           if [ "$current" != "$month" ]; then
             printf '%s\n' "$month" > data/heartbeat.txt
+
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add data/heartbeat.txt
+
+            if ! git diff --cached --quiet; then
+              git commit -m "chore: manter atividade do repositório"
+              git push origin main
+            fi
           fi
 
-      - name: Persistir histórico e atividade
+      - name: Registrar última execução bem-sucedida
+        shell: bash
+        run: |
+          date -u +%s > data/last_run_unix.txt
+          date -u +%Y-%m-%dT%H:%M:%SZ > data/last_run_iso.txt
+
+      - name: Persistir estado em branch separada
         shell: bash
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add data/history.json data/heartbeat.txt
-          if ! git diff --cached --quiet; then
-            git commit -m "chore(bot): atualizar estado"
-            git push origin main
-          else
-            echo "Nenhuma alteração para salvar."
-          fi
+
+          git add data/history.json
+          git add -f data/last_run_unix.txt data/last_run_iso.txt
+
+          git commit -m "chore(bot-state): atualizar estado" || true
+
+          git push --force origin HEAD:bot-state
