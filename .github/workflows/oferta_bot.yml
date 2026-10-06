@@ -107,3 +107,5 @@ jobs:
           git commit -m "chore(bot-state): atualizar estado" || true
 
           git push --force origin HEAD:bot-state
+
+# fluxo de publicação estabilizado em 2026-10-06
