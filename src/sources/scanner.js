@@ -26,13 +26,23 @@ export async function scanForNewDeals() {
 
     const fresh = [];
     const fingerprints = new Set();
+    const products = new Set();
 
     for (const deal of candidates) {
       const prepared = await prepareDeal(deal);
       if (!prepared) continue;
+
+      // Evita que versões repetidas do mesmo produto passem na mesma varredura
+      // antes que a primeira publicação seja gravada no histórico.
+      const productKey = `${String(prepared.store || "").toLowerCase()}|${String(prepared.productId || "").toLowerCase()}`;
+      const titleKey = `${String(prepared.store || "").toLowerCase()}|${String(prepared.titleFingerprint || "")}`;
+      const duplicateKey = prepared.productId ? productKey : titleKey;
+
+      if (products.has(duplicateKey)) continue;
       if (fingerprints.has(prepared.fingerprint)) continue;
 
       fingerprints.add(prepared.fingerprint);
+      products.add(duplicateKey);
       fresh.push(prepared);
     }
 
