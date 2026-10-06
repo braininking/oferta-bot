@@ -1,25 +1,26 @@
 {
-  "name": "oferta-bot",
-  "version": "0.3.0",
-  "private": true,
-  "type": "module",
-  "scripts": {
-    "start": "node src/index.js",
-    "run-once": "node src/run-once.js",
-    "whatsapp:setup": "node src/whatsapp-setup.js",
-    "whatsapp:bridge": "node src/whatsapp-bridge.js"
-  },
-  "dependencies": {
-    "@whiskeysockets/baileys": "^6.7.24",
-    "axios": "^1.8.4",
-    "cheerio": "^1.0.0",
-    "dotenv": "^16.4.7",
-    "input": "^1.0.1",
-    "node-cron": "^4.2.1",
-    "pino": "^10.4.0",
-    "qrcode": "^1.5.4",
-    "qrcode-terminal": "^0.12.0",
-    "telegram": "^2.26.22",
-    "whatsapp-web.js": "^1.34.7"
-  }
+    "name": "oferta-bot",
+    "version": "0.3.0",
+    "private": true,
+    "type": "module",
+    "scripts": {
+        "start": "node src/index.js",
+        "run-once": "node src/run-once.js",
+        "whatsapp:setup": "node src/whatsapp-setup.js",
+        "whatsapp:bridge": "node src/whatsapp-bridge.js"
+    },
+    "dependencies": {
+        "@whiskeysockets/baileys": "^6.7.24",
+        "axios": "^1.8.4",
+        "cheerio": "^1.0.0",
+        "dotenv": "^16.4.7",
+        "input": "^1.0.1",
+        "node-cron": "^4.2.1",
+        "pino": "^10.4.0",
+        "qrcode": "^1.5.4",
+        "qrcode-terminal": "^0.12.0",
+        "sharp": "^0.35.5",
+        "telegram": "^2.26.22",
+        "whatsapp-web.js": "https://github.com/wwebjs/whatsapp-web.js.git#064a3d5"
+    }
 }

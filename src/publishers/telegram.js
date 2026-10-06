@@ -2,6 +2,7 @@
 import path from 'node:path';
 import os from 'node:os';
 import axios from 'axios';
+import sharp from 'sharp';
 
 export function createTelegramPublisher(client, targetChannel) {
   if (!client || !targetChannel) throw new Error("Telegram não configurado.");
@@ -80,8 +81,16 @@ async function downloadImageToTemp(url) {
     throw new Error("A URL da oferta não retornou uma imagem válida.");
   }
 
-  const extension = contentType.includes("png") ? ".png" : contentType.includes("webp") ? ".webp" : ".jpg";
-  const filePath = path.join(os.tmpdir(), "oferta-bot-" + Date.now() + "-" + Math.random().toString(16).slice(2) + extension);
-  await fs.writeFile(filePath, buffer);
+  // O GramJS só identifica .jpg/.jpeg/.png como foto. Muitas imagens do Promobit chegam em WebP/AVIF;
+  // convertemos tudo para JPEG para garantir que o Telegram publique como FOTO (e mantenha a legenda).
+  const filePath = path.join(
+    os.tmpdir(),
+    "oferta-bot-" + Date.now() + "-" + Math.random().toString(16).slice(2) + ".jpg"
+  );
+
+  await sharp(buffer)
+    .jpeg({ quality: 90, mozjpeg: true })
+    .toFile(filePath);
+
   return filePath;
 }
