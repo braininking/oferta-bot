@@ -80,8 +80,9 @@ export async function scanPublicPage(sourceUrl) {
       if (!retailerUrl) return null;
       const finalUrl = await resolveExternalUrl(retailerUrl);
       if (!isSupportedStore(finalUrl)) return null;
+      const imageUrl = await resolveHigherResolutionImageUrl(deal.imageUrl);
       return {
-        title: deal.title, productId: deal.productId, imageUrl: deal.imageUrl || null, url: finalUrl,
+        title: deal.title, productId: deal.productId, imageUrl, url: finalUrl,
         source: deal.source, storeName: deal.storeName, storeDomain: deal.storeDomain,
         price: deal.price, oldPrice: deal.oldPrice, discount: deal.discount, publishedAt: deal.publishedAt,
         likes: deal.likes, engagementScore: deal.engagementScore, clicks: deal.clicks, comments: deal.comments,
@@ -105,6 +106,30 @@ function makeOfferImageUrl(offerPhoto) {
   const cleanPath = value.replace(/^\/+/, "");
 
   return "https://i.promobit.com.br/180/" + cleanPath;
+}
+
+async function resolveHigherResolutionImageUrl(imageUrl) {
+  if (!imageUrl || !/\/180\//i.test(imageUrl)) return imageUrl || null;
+
+  const highResolutionUrl = imageUrl.replace(/\/180\//i, "/600/");
+
+  try {
+    const response = await axios.head(highResolutionUrl, {
+      timeout: 2000,
+      maxRedirects: 3,
+      validateStatus: status => status >= 200 && status < 400,
+      headers: {
+        "User-Agent": REQUEST_HEADERS["User-Agent"],
+        "Accept": "image/avif,image/webp,image/apng,image/*,*/*;q=0.8"
+      }
+    });
+
+    return response.status >= 200 && response.status < 400
+      ? highResolutionUrl
+      : imageUrl;
+  } catch {
+    return imageUrl;
+  }
 }
 
 function readNextData($) {

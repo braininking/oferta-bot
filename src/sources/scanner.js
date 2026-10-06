@@ -48,6 +48,9 @@ export async function scanForNewDeals() {
 
     const limit = Math.max(0, Number(config.maxDealsPerScan || 3));
 
+    // Ordena por potencial comercial antes da diversidade de lojas.
+    fresh.sort((a, b) => marketingScore(b) - marketingScore(a));
+
     // Prioriza diversidade de lojas: evita que Amazon ocupe todas as vagas
     // quando outras plataformas suportadas também possuem ofertas elegíveis.
     const selected = [];
@@ -75,6 +78,44 @@ export async function scanForNewDeals() {
   } finally {
     scanning = false;
   }
+}
+
+function marketingScore(deal) {
+  const title = String(deal?.title || "").toLowerCase();
+  const category = String(deal?.category || "").toLowerCase();
+
+  const visualHighTicket = [
+    "smartphone", "celular", "iphone", "galaxy", "samsung",
+    "placa de vídeo", "placa de video", "rtx", "radeon", "gpu",
+    "ps5", "playstation", "xbox", "nintendo", "switch",
+    "smart tv", "televisão", "televisao", "tv",
+    "notebook", "monitor", "processador", "ryzen", "core i",
+    "ssd", "memória", "memoria", "headset", "teclado", "mouse"
+  ];
+
+  const categoryBoost = visualHighTicket.some(term =>
+    title.includes(term) || category.includes(term)
+  ) ? 120 : 0;
+
+  const price = Number(deal?.price || 0);
+  const discount = Number(deal?.discount || 0);
+  const engagement = Number(deal?.engagementScore || 0);
+  const likes = Number(deal?.likes || 0);
+  const clicks = Number(deal?.clicks || 0);
+  const highlightBoost = deal?.highlight ? 80 : 0;
+
+  const priceBoost =
+    price >= 300 ? 80 :
+    price >= 150 ? 45 :
+    price >= 80 ? 20 : 0;
+
+  return categoryBoost +
+    highlightBoost +
+    Math.min(discount * 3, 120) +
+    Math.min(engagement, 100) +
+    Math.min(likes * 5, 50) +
+    Math.min(clicks / 10, 50) +
+    priceBoost;
 }
 
 export { finalizeDeal };

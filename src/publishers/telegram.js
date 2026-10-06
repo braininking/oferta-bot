@@ -19,11 +19,17 @@ export function createTelegramPublisher(client, targetChannel) {
         ? "De: R$ " + Number(deal.oldPrice).toLocaleString("pt-BR", { minimumFractionDigits: 2 })
         : "";
 
+      const channelUrl = "https://t.me/radardeifertas";
+      const shareUrl = "https://t.me/share/url?url=" + encodeURIComponent(channelUrl) +
+        "&text=" + encodeURIComponent("🔥 Achei uma oferta no Radar de Ofertas: " + deal.title);
+
       const message = [
-        "🔥", "", deal.title, oldPriceLine, priceLine,
+        "🔥", "", String(deal.title || "OFERTA").toUpperCase(), oldPriceLine, priceLine,
         deal.discount > 0 ? "🏷️ " + Number(deal.discount).toFixed(0) + "% OFF" : "",
-        "", "🛒 Comprar:", deal.affiliateUrl, "",
-        "⚠️ Oferta válida enquanto durarem os estoques. Preço, estoque e condições podem mudar."
+        "", "🛒 COMPRAR AGORA:", deal.affiliateUrl, "",
+        "⚡ Preço e estoque podem mudar a qualquer momento.",
+        "", "📲 Mais ofertas:", channelUrl,
+        "↗️ Compartilhe:", shareUrl
       ].filter(Boolean).join("\n");
 
       let imagePath = null;
