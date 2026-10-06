@@ -74,36 +74,22 @@ export async function scanPublicPage(sourceUrl) {
       source: sourceUrl
     }));
 
-    const resolved = [];
-    for (const deal of dedupe(candidates)) {
+    const uniqueCandidates = dedupe(candidates).slice(0, 30);
+    const resolved = await mapWithConcurrency(uniqueCandidates, 6, async deal => {
       const retailerUrl = await resolvePromobitOffer(deal.productId);
-      if (!retailerUrl) continue;
-
+      if (!retailerUrl) return null;
       const finalUrl = await resolveExternalUrl(retailerUrl);
-      if (!isSupportedStore(finalUrl)) continue;
+      if (!isSupportedStore(finalUrl)) return null;
+      return {
+        title: deal.title, productId: deal.productId, imageUrl: deal.imageUrl || null, url: finalUrl,
+        source: deal.source, storeName: deal.storeName, storeDomain: deal.storeDomain,
+        price: deal.price, oldPrice: deal.oldPrice, discount: deal.discount, publishedAt: deal.publishedAt,
+        likes: deal.likes, engagementScore: deal.engagementScore, clicks: deal.clicks, comments: deal.comments,
+        highlight: deal.highlight, category: deal.category
+      };
+    });
 
-      resolved.push({
-        title: deal.title,
-        productId: deal.productId,
-        imageUrl: deal.imageUrl || null,
-        url: finalUrl,
-        source: deal.source,
-        storeName: deal.storeName,
-        storeDomain: deal.storeDomain,
-        price: deal.price,
-        oldPrice: deal.oldPrice,
-        discount: deal.discount,
-        publishedAt: deal.publishedAt,
-        likes: deal.likes,
-        engagementScore: deal.engagementScore,
-        clicks: deal.clicks,
-        comments: deal.comments,
-        highlight: deal.highlight,
-        category: deal.category
-      });
-    }
-
-    return resolved;
+    return resolved.filter(Boolean);
   }
 
   return scanLegacyJsonLd($, sourceUrl);
@@ -169,24 +155,21 @@ async function resolvePromobitOffer(productId) {
 
 async function resolveExternalUrl(url) {
   if (!url) return null;
-
   try {
     const parsed = new URL(url);
     if (isSupportedStore(parsed.toString())) return parsed.toString();
-
-    const response = await axios.get(url, {
-      timeout: 8000,
-      maxRedirects: 6,
-      validateStatus: status => status >= 200 && status < 400,
-      responseType: "text",
-      maxContentLength: 256 * 1024,
-      headers: REQUEST_HEADERS
-    });
-
-    return response.request?.res?.responseUrl || response.config?.url || url;
+    const response = await axios.get(url, { timeout: 8000, maxRedirects: 6, validateStatus: status => status >= 200 && status < 400, responseType: "text", maxContentLength: 256 * 1024, headers: REQUEST_HEADERS });
+    return response.request?.res?.responseUrl || null;
   } catch (error) {
     return error?.request?.res?.responseUrl || null;
   }
+}
+
+async function mapWithConcurrency(items, concurrency, worker) {
+  const results = new Array(items.length); let nextIndex = 0;
+  async function runWorker() { while (true) { const index = nextIndex++; if (index >= items.length) return; try { results[index] = await worker(items[index], index); } catch (error) { console.warn("[RESOLUÇÃO] candidato falhou:", error.message); results[index] = null; } } }
+  await Promise.all(Array.from({length: Math.min(Math.max(1, concurrency), items.length)}, () => runWorker()));
+  return results;
 }
 
 function decodeEscapedUrl(value) {

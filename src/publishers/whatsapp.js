@@ -22,7 +22,7 @@ export function createWhatsAppPublisher(sock, groupJid) {
         : "";
 
       const message = [
-        "🔥 OFERTA ENCONTRADA",
+        "🔥",
         "",
         deal.title,
         oldPrice,
