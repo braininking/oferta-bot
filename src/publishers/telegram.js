@@ -14,7 +14,7 @@ export function createTelegramPublisher(client, targetChannel) {
         : "";
 
       const message = [
-        "🔥 OFERTA ENCONTRADA",
+        "🔥",
         "",
         deal.title,
         oldPriceLine,
@@ -62,4 +62,3 @@ export function createTelegramPublisher(client, targetChannel) {
     }
   };
 }
-
