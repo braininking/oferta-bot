@@ -54,6 +54,13 @@ export function createTelegramPublisher(client, targetChannel) {
   };
 }
 
+function withTimeout(promise, milliseconds, label) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(() => reject(new Error(label + " excedeu " + milliseconds + "ms")), milliseconds))
+  ]);
+}
+
 async function downloadImageToTemp(url) {
   const response = await axios.get(url, {
     responseType: "arraybuffer",
