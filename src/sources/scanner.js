@@ -47,7 +47,31 @@ export async function scanForNewDeals() {
     }
 
     const limit = Math.max(0, Number(config.maxDealsPerScan || 3));
-    return fresh.slice(0, limit);
+
+    // Prioriza diversidade de lojas: evita que Amazon ocupe todas as vagas
+    // quando outras plataformas suportadas também possuem ofertas elegíveis.
+    const selected = [];
+    const selectedStores = new Set();
+
+    for (const deal of fresh) {
+      const store = String(deal.store || "").toLowerCase();
+      if (!store || selectedStores.has(store)) continue;
+
+      selected.push(deal);
+      selectedStores.add(store);
+
+      if (selected.length >= limit) return selected;
+    }
+
+    // Se não houver lojas diferentes suficientes, completa com as melhores
+    // ofertas restantes sem alterar a ordenação original.
+    for (const deal of fresh) {
+      if (selected.length >= limit) break;
+      if (selected.includes(deal)) continue;
+      selected.push(deal);
+    }
+
+    return selected;
   } finally {
     scanning = false;
   }
